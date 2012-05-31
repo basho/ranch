@@ -4,7 +4,9 @@ deps
 doc/*.css
 doc/*.html
 doc/*.png
+doc/*.md
 doc/edoc-info
 ebin
 logs
 test/*.beam
+*~

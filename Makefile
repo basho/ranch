@@ -31,6 +31,8 @@ clean-docs:
 
 # Tests.
 
+test: tests
+
 tests: clean app eunit ct
 
 eunit:
@@ -48,3 +50,6 @@ build-plt:
 dialyze:
 	@$(DIALYZER) --src src --plt .$(PROJECT).plt \
 		-Werror_handling -Wrace_conditions -Wunmatched_returns # -Wunderspecs
+
+repl:
+	erl -pz deps/*/ebin -pa ebin
