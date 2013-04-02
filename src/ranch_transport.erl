@@ -31,6 +31,7 @@ behaviour_info(callbacks) ->
      {controlling_process, 2}, %% Give control of the socket to a new process.
      {peername, 1},            %% Return the remote address and port of the connection.
      {sockname, 1},            %% Return the local address and port of the connection.
+     {connect, 3},             %%  Open a connection to the given host and port number.
      {close, 1}];              %% Close the given socket
 behaviour_info(_) ->
     undefined.
