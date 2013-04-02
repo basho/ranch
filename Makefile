@@ -47,4 +47,4 @@ build-plt:
 
 dialyze:
 	@$(DIALYZER) --src src --plt .$(PROJECT).plt \
-		-Werror_handling -Wrace_conditions -Wunmatched_returns # -Wunderspecs
+		-Werror_handling -Wno_undefined_callbacks -Wrace_conditions -Wunmatched_returns # -Wunderspecs
