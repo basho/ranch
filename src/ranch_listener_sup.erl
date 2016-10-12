@@ -1,4 +1,4 @@
-%% Copyright (c) 2011-2012, Loïc Hoguin <essen@ninenines.eu>
+%% Copyright (c) 2011-2015, Loïc Hoguin <essen@ninenines.eu>
 %%
 %% Permission to use, copy, modify, and/or distribute this software for any
 %% purpose with or without fee is hereby granted, provided that the above
@@ -12,39 +12,31 @@
 %% ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-%% @private
 -module(ranch_listener_sup).
 -behaviour(supervisor).
 
-%% API.
 -export([start_link/6]).
-
-%% supervisor.
 -export([init/1]).
 
-%% API.
-
--spec start_link(any(), non_neg_integer(), module(), any(), module(), any())
+-spec start_link(ranch:ref(), non_neg_integer(), module(), any(), module(), any())
 	-> {ok, pid()}.
-start_link(Ref, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts) ->
+start_link(Ref, NumAcceptors, Transport, TransOpts, Protocol, ProtoOpts) ->
 	MaxConns = proplists:get_value(max_connections, TransOpts, 1024),
-	{ok, SupPid} = supervisor:start_link(?MODULE, []),
-	{ok, ListenerPid} = supervisor:start_child(SupPid,
-		{ranch_listener, {ranch_listener, start_link,
-			[Ref, MaxConns, ProtoOpts]},
-		 permanent, 5000, worker, [ranch_listener]}),
-	ok = ranch_server:insert_listener(Ref, ListenerPid),
-	{ok, ConnsPid} = supervisor:start_child(SupPid,
-		{ranch_conns_sup, {ranch_conns_sup, start_link, []},
-		 permanent, 5000, supervisor, [ranch_conns_sup]}),
-	{ok, _PoolPid} = supervisor:start_child(SupPid,
-		{ranch_acceptors_sup, {ranch_acceptors_sup, start_link, [
-			Ref, NbAcceptors, Transport, TransOpts,
-			Protocol, ListenerPid, ConnsPid
-		]}, permanent, 5000, supervisor, [ranch_acceptors_sup]}),
-	{ok, SupPid}.
+	ranch_server:set_new_listener_opts(Ref, MaxConns, ProtoOpts),
+	supervisor:start_link(?MODULE, {
+		Ref, NumAcceptors, Transport, TransOpts, Protocol
+	}).
 
-%% supervisor.
-
-init([]) ->
-	{ok, {{one_for_all, 10, 10}, []}}.
+init({Ref, NumAcceptors, Transport, TransOpts, Protocol}) ->
+	AckTimeout = proplists:get_value(ack_timeout, TransOpts, 5000),
+	ConnType = proplists:get_value(connection_type, TransOpts, worker),
+	Shutdown = proplists:get_value(shutdown, TransOpts, 5000),
+	ChildSpecs = [
+		{ranch_conns_sup, {ranch_conns_sup, start_link,
+				[Ref, ConnType, Shutdown, Transport, AckTimeout, Protocol]},
+			permanent, infinity, supervisor, [ranch_conns_sup]},
+		{ranch_acceptors_sup, {ranch_acceptors_sup, start_link,
+				[Ref, NumAcceptors, Transport, TransOpts]},
+			permanent, infinity, supervisor, [ranch_acceptors_sup]}
+	],
+	{ok, {{rest_for_one, 1, 5}, ChildSpecs}}.

@@ -1,4 +1,4 @@
-%% Copyright (c) 2012-2015, Loïc Hoguin <essen@ninenines.eu>
+%% Copyright (c) 2015, Loïc Hoguin <essen@ninenines.eu>
 %%
 %% Permission to use, copy, modify, and/or distribute this software for any
 %% purpose with or without fee is hereby granted, provided that the above
@@ -12,13 +12,12 @@
 %% ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
--module(ranch_protocol).
+-module(ranch_ct_hook).
 
-%% Start a new connection process for the given socket.
--callback start_link(
-		Ref::ranch:ref(),
-		Socket::any(),
-		Transport::module(),
-		ProtocolOptions::any())
-	-> {ok, ConnectionPid::pid()}
-	| {ok, SupPid::pid(), ConnectionPid::pid()}.
+-export([init/2]).
+
+init(_, _) ->
+	ct_helper:start([ranch, ssl]),
+	ct_helper:make_certs_in_ets(),
+	error_logger:add_report_handler(ct_helper_error_h),
+	{ok, undefined}.

@@ -1,4 +1,4 @@
-%% Copyright (c) 2011-2012, Loïc Hoguin <essen@ninenines.eu>
+%% Copyright (c) 2011-2015, Loïc Hoguin <essen@ninenines.eu>
 %%
 %% Permission to use, copy, modify, and/or distribute this software for any
 %% purpose with or without fee is hereby granted, provided that the above
@@ -12,35 +12,45 @@
 %% ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-%% @private
 -module(ranch_acceptors_sup).
 -behaviour(supervisor).
 
-%% API.
--export([start_link/7]).
-
-%% supervisor.
+-export([start_link/4]).
 -export([init/1]).
 
-%% API.
+-spec start_link(ranch:ref(), non_neg_integer(), module(), any())
+	-> {ok, pid()}.
+start_link(Ref, NumAcceptors, Transport, TransOpts) ->
+	supervisor:start_link(?MODULE, [Ref, NumAcceptors, Transport, TransOpts]).
 
--spec start_link(any(), non_neg_integer(), module(), any(),
-	module(), pid(), pid()) -> {ok, pid()}.
-start_link(Ref, NbAcceptors, Transport, TransOpts,
-		Protocol, ListenerPid, ConnsPid) ->
-	supervisor:start_link(?MODULE, [Ref, NbAcceptors, Transport, TransOpts,
-		Protocol, ListenerPid, ConnsPid]).
-
-%% supervisor.
-
-init([Ref, NbAcceptors, Transport, TransOpts,
-		Protocol, ListenerPid, ConnsPid]) ->
-	{ok, LSocket} = Transport:listen(TransOpts),
-	{ok, {_, Port}} = Transport:sockname(LSocket),
-	ranch_listener:set_port(ListenerPid, Port),
+init([Ref, NumAcceptors, Transport, TransOpts]) ->
+	ConnsSup = ranch_server:get_connections_sup(Ref),
+	LSocket = case proplists:get_value(socket, TransOpts) of
+		undefined ->
+			TransOpts2 = proplists:delete(ack_timeout,
+				proplists:delete(connection_type,
+				proplists:delete(max_connections,
+				proplists:delete(shutdown,
+				proplists:delete(socket, TransOpts))))),
+			case Transport:listen(TransOpts2) of
+				{ok, Socket} -> Socket;
+				{error, Reason} -> listen_error(Ref, Transport, TransOpts2, Reason)
+			end;
+		Socket ->
+			Socket
+	end,
+	{ok, Addr} = Transport:sockname(LSocket),
+	ranch_server:set_addr(Ref, Addr),
 	Procs = [
 		{{acceptor, self(), N}, {ranch_acceptor, start_link, [
-			Ref, LSocket, Transport, Protocol, ListenerPid, ConnsPid
+			LSocket, Transport, ConnsSup
 		]}, permanent, brutal_kill, worker, []}
-			|| N <- lists:seq(1, NbAcceptors)],
-	{ok, {{one_for_one, 10, 10}, Procs}}.
+			|| N <- lists:seq(1, NumAcceptors)],
+	{ok, {{one_for_one, 1, 5}, Procs}}.
+
+-spec listen_error(any(), module(), any(), atom()) -> no_return().
+listen_error(Ref, Transport, TransOpts2, Reason) ->
+	error_logger:error_msg(
+		"Failed to start Ranch listener ~p in ~p:listen(~p) for reason ~p (~s)~n",
+		[Ref, Transport, TransOpts2, Reason, inet:format_error(Reason)]),
+	exit({listen_error, Ref, Reason}).
